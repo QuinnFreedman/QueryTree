@@ -51,9 +51,11 @@ class Tree:
         else:
             first = split[0]
             rest = split[1]
-            child = Tree()
+            child = self[first]
+            if not isinstance(child, Tree):
+                child = Tree()
+                self._put_value(first, child)
             child[rest] = value
-            self._put_value(first, child)
 
     def _put_value(self, query, value):
         if query.isdigit() and not isinstance(self.data, dict):
@@ -140,6 +142,11 @@ class Tree:
             i = int(query)
             if i < len(self.data):
                 del self.data[i]
+                i -= 1
+                while i >= 0 and self.data[i] is None:
+                    del self.data[i]
+                    i -= 1
+
         elif not query.isdigit() and isinstance(self.data, dict):
             if query in self.data:
                 del self.data[query]
@@ -329,6 +336,17 @@ if __name__ == "__main__":
     tree["x"] = {"y": {"z": "a"}}
     assert tree["x.y.z"] == "a"
 
+    # adding values doesn't overwrite non-conflicting ones
+    tree = Tree()
+    tree["foo.bar"] = 1
+    tree["foo.baz"] = 2
+    assert tree["foo.bar"] == 1
+    tree = Tree()
+    tree["foo.bar.baz"] = 1
+    tree["foo.bar.buz"] = 2
+    assert tree["foo.bar.baz"] == 1
+    assert tree["foo.bar.buz"] == 2
+
     # initialize with & access lists
     tree = Tree(["a", "b", ["x", "y", "z"]])
     assert tree["0"] == "a"
@@ -381,6 +399,10 @@ if __name__ == "__main__":
     assert tree["0"] == "b"
     assert len(tree) == 1
     assert tree["1"] == None
+
+    tree["10"] == True
+    tree["10"] == None
+    assert len(tree) == 1
 
     # keys() & values() for dict
     tree = Tree()
