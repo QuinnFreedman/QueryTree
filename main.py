@@ -3,7 +3,20 @@ import xml.etree.ElementTree as xml
 
 
 class Tree:
+    """
+    A datastrucutre that lets you easily query deeply nested trees and load/save them
+    in json, xml, yaml, toml, or plain python.
+    """
+
     def __init__(self, data=None):
+        """
+        Creates a new queryable tree
+
+        Parameters
+        ----------
+        data : None or dict or list, optional
+               The starting data for the tree
+        """
         if data is None:
             self.data = None
         elif isinstance(data, dict):
@@ -40,6 +53,26 @@ class Tree:
             isinstance(value, list)
 
     def __setitem__(self, query, value):
+        """
+        Sets the value at the given query location. If `value` is `None`,
+        the entry will be removed.
+
+        Parameters
+        ----------
+        query : str query
+                The location in the tree where the value should be added
+        value : None or int or float or bool or str or dict or list or Tree
+                The value to insert
+
+        Raises
+        ------
+        TypeError
+            if an invalid type is given.
+        """
+        if not isinstance(query, str):
+            raise TypeError(
+                "Query type must be 'str', not '{}'".format(type(query).__name__))
+
         if not Tree._is_valid_value(value):
             raise TypeError(
                 "Invalid value type: {}".format(type(value).__name__))
@@ -94,6 +127,30 @@ class Tree:
             isinstance(val, bool)
 
     def __getitem__(self, query):
+        """
+        Gets the value at the given query location. If there is no value stored
+        at the given location or if any of the vertices in the given path do not
+        exist, 'None' is returned.
+
+        Parameters
+        ----------
+        query : str query
+                The location in the tree where the value should be retrieved 
+
+        Returns
+        -------
+        None or int or float or bool or str or dict or list or Tree
+            The value at the given location, or None
+
+        Raises
+        ------
+        TypeError
+            if an invalid query type is given.
+        """
+        if not isinstance(query, str):
+            raise TypeError(
+                "Query type must be 'str', not '{}'".format(type(query).__name__))
+
         split = query.split(".", 1)
 
         if len(split) == 1:
@@ -120,6 +177,24 @@ class Tree:
         return None
 
     def __len__(self):
+        """
+        The size/length of this tree node.
+
+        If this node is an unordered (dictionary) node, it is the same as the number
+        of children or ``len(list(this.keys()))``
+        If this is an ordered (list) node, ``len(node)`` might not be the same as
+        ``len(list(node.keys()))``. In this case, ``len()`` gives the length the list
+        would have to be to include the child with the highest index.
+
+        >>> tree = Tree([0, 1, 2])
+        >>> tree['8'] = 'foo'
+        >>> len(tree)
+        9
+
+        Returns
+        -------
+        int
+        """
         if self.data is None:
             return 0
         return len(self.data)
@@ -135,9 +210,42 @@ class Tree:
         return iter(self.data)
 
     def __contains__(self, query):
+        """
+        Checks if the given query has a value in the tree.
+
+        Parameters
+        ----------
+        query : str
+
+        Returns
+        -------
+        bool
+        """
         return self[query] is not None
 
     def __delitem__(self, query):
+        """
+        Removes the given item from the tree, if it exists.
+
+        In most cases, this is the same as setting the item to `None`,
+        but if the value is being deleted from a list node and it is not
+        at the end, ``del`` shrinks the list and shifts the other entries over,
+        while assigning ``None`` just leaves a hole in the list.
+
+        >>> tree = Tree(["a", "b", "c"])
+        >>> tree["1"] = None
+        >>> len(list(tree.values()))
+        2
+        >>> len(tree)
+        3
+        >>> del tree["1"]
+        >>> len(tree)
+        2
+
+        Parameters
+        ----------
+        query : str
+        """
         if query.isdigit() and isinstance(self.data, list):
             i = int(query)
             if i < len(self.data):
@@ -155,6 +263,18 @@ class Tree:
             self.data = None
 
     def keys(self):
+        """
+        Gives a list (iterable) of the keys for the non-None direct 
+        children of this node.
+
+        >>> tree = Tree({"foo": "bar", "baz": None})
+        >>> list(tree.keys())
+        ['foo']
+
+        Returns
+        -------
+        iterable str
+        """
         if isinstance(self.data, list):
             return (str(i) for i in range(len(self.data)) if self.data[i] is not None)
         elif isinstance(self.data, dict):
@@ -162,6 +282,17 @@ class Tree:
         return []
 
     def values(self):
+        """
+        Gives a list (iterable) of the non-None direct children of this node.
+
+        >>> tree = Tree({"foo": "bar", "baz": None})
+        >>> list(tree.values())
+        ['bar']
+
+        Returns
+        -------
+        iterable (None or int or float or bool or str or dict or list or Tree)
+        """
         if isinstance(self.data, list):
             return (x for x in self.data if x is not None)
         elif isinstance(self.data, dict):
@@ -169,6 +300,17 @@ class Tree:
         return []
 
     def to_dict(self):
+        """
+        Converts the tree to ordinary python dictionaries/lists
+
+        >>> tree = Tree({"foo": "bar", "baz": None})
+        >>> tree.to_dict()
+        {'foo': 'bar'}
+
+        Returns
+        -------
+        dict (None or int or float or bool or str or dict or list or Tree)
+        """
         if isinstance(self.data, list):
             data = []
             for item in self.data:
@@ -191,10 +333,38 @@ class Tree:
             return {}
 
     def to_json(self, indent=4):
+        """
+        Converts the tree to a JSON string
+
+        Returns
+        -------
+        str
+        """
         data = self.to_dict()
         return json.dumps(data, indent=indent)
 
     def to_xml(self, root, list_names=None, encoding="unicode"):
+        """
+        Converts the tree to a XML string
+
+        XML does not store the exact same information as JSON, YAML, and TOML,
+        so some extra data must be provided, like the name of the root node 
+        (`root`) and the name of list items (`list_names`).
+
+        Parameters
+        ----------
+        root : str
+            the tag name to use for the root element
+        list_names : str or dict, optional
+            the tag name to use for elements of lists
+        encoding : str
+            the encoding to use
+
+
+        Returns
+        -------
+        str
+        """
         root_elem = xml.Element(root)
         self._to_xml_helper(root_elem, list_names=list_names)
         return xml.tostring(root_elem, encoding=encoding)
@@ -235,21 +405,53 @@ class Tree:
                     el.text = str(item)
 
     def to_toml(self):
+        """
+        Converts the tree to a TOML string
+
+        Returns
+        -------
+        str
+        """
         toml = _require_toml()
         data = self.to_dict()
         return toml.dumps(data)
 
     def to_yaml(self):
+        """
+        Converts the tree to a YAML string
+
+        Returns
+        -------
+        str
+        """
         yaml = _require_yaml()
         data = self.to_dict()
         return yaml.dump(data)
 
     @staticmethod
     def parse_json(string):
+        """
+        Parses JSON string
+
+        Returns
+        -------
+        Tree
+        """
         return Tree(json.loads(string))
 
     @staticmethod
     def parse_xml(string):
+        """
+        Parses XML string
+
+        Because XML stores different data than JSON, TOML, and YAML, some data
+        will be lost, namely all metadata, the name of the root node, and the
+        name of items in lists.
+
+        Returns
+        -------
+        Tree
+        """
         root = xml.fromstring(string)
         return Tree._parse_xml_helper(root)
 
@@ -272,11 +474,31 @@ class Tree:
 
     @staticmethod
     def parse_toml(string):
+        """
+        Parses JSON string
+
+        Returns
+        -------
+        Tree
+        """
         toml = _require_toml()
         return Tree(toml.loads(string))
 
     @staticmethod
     def parse_yaml(string, safe=False):
+        """
+        Parses JSON string
+
+        Parameters
+        ----------
+        safe : bool, optional
+            whether to use ``yaml.SafeLoader`` which will only parse
+            a subset of YAML to avoid attacks from malicious data
+
+        Returns
+        -------
+        Tree
+        """
         yaml = _require_yaml()
         loader = yaml.SafeLoader if safe else yaml.FullLoader
         return Tree(yaml.load(string, Loader=loader))
@@ -303,6 +525,9 @@ def _require_yaml():
 
 
 if __name__ == "__main__":
+    import doctest
+    doctest.testmod()
+
     def eq_ignore_whitespace(s1, s2):
         return "".join(s1.split()) == "".join(s2.split())
 
@@ -400,9 +625,26 @@ if __name__ == "__main__":
     assert len(tree) == 1
     assert tree["1"] == None
 
-    tree["10"] == True
-    tree["10"] == None
+    tree["10"] = True
+    assert len(tree) == 11
+    tree["10"] = None
     assert len(tree) == 1
+
+    # setting `None` leaves hole in list
+    tree = Tree(["a", "b", "c"])
+    tree["1"] = None
+    assert tree["1"] == None
+    assert len(tree) == 3
+    assert len(list(tree.values())) == 2
+    tree["1"] = "foo"
+    assert list(tree) == ["a", "foo", "c"]
+
+    # You can delete a None item from a list
+    tree = Tree(["a", "b", "c"])
+    tree["1"] = None
+    assert len(tree) == 3
+    del tree["1"]
+    assert len(tree) == 2
 
     # keys() & values() for dict
     tree = Tree()
