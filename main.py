@@ -135,7 +135,7 @@ class Tree:
         Parameters
         ----------
         query : str query
-                The location in the tree where the value should be retrieved 
+                The location in the tree where the value should be retrieved
 
         Returns
         -------
@@ -264,7 +264,7 @@ class Tree:
 
     def keys(self):
         """
-        Gives a list (iterable) of the keys for the non-None direct 
+        Gives a list (iterable) of the keys for the non-None direct
         children of this node.
 
         >>> tree = Tree({"foo": "bar", "baz": None})
@@ -348,7 +348,7 @@ class Tree:
         Converts the tree to a XML string
 
         XML does not store the exact same information as JSON, YAML, and TOML,
-        so some extra data must be provided, like the name of the root node 
+        so some extra data must be provided, like the name of the root node
         (`root`) and the name of list items (`list_names`).
 
         Parameters
@@ -447,7 +447,7 @@ class Tree:
         return Tree(json.loads(string))
 
     @staticmethod
-    def parse_xml(string, parse_primitives=True):
+    def parse_xml(string, parse_primitives=True, empty_tag_mode="skip"):
         """
         Parses XML string
 
@@ -460,28 +460,48 @@ class Tree:
         parse_primitives : bool, optional
             if `True` (default), text values inside xml tags will be parsed
             as ints, float, or bools, if possible
+        empty_tag_mode: string, optional
+            what to do with empty or "short" tags. One of
+            * ``"skip"`` (default) -- ignore empty tags
+            * ``"keep"`` -- keep them as empy strings
+            * ``"attr"`` -- if they have a single _attribute_, the value of that
+              attribute will be used as the value of the element
 
         Returns
         -------
         Tree
         """
+        if empty_tag_mode not in ["skip", "keep", "attr"]:
+            raise ValueError(
+                "'empty_tag_mode' must be one of 'skip', 'keep', or 'attr'")
         root = xml.fromstring(string)
-        return Tree._parse_xml_helper(root, parse_primitives=parse_primitives)
+        return Tree._parse_xml_helper(root, parse_primitives, empty_tag_mode)
 
     @staticmethod
-    def _parse_xml_helper(xml_element, parse_primitives=True):
+    def _parse_xml_helper(xml_element, parse_primitives, empty_tag_mode):
         children = []
         for child in xml_element:
             if len(child) == 0:
+                value = None
                 if child.text and len(child.text) > 0:
+                    value = child.text
+                elif empty_tag_mode == "keep":
+                    value = ""
+                elif empty_tag_mode == "attr":
+                    if len(child.attrib) == 1:
+                        value = list(child.attrib.values())[0]
+
+                if value is not None:
                     if parse_primitives:
-                        value = Tree._parse_primitive(child.text)
+                        value = Tree._parse_primitive(value)
                     else:
                         value = child.text
-
                     children.append((child.tag, value))
+
             else:
-                children.append((child.tag, Tree._parse_xml_helper(child)))
+                parsed_child = Tree._parse_xml_helper(
+                    child, parse_primitives, empty_tag_mode)
+                children.append((child.tag, parsed_child))
 
         # if there are no duplicate keys
         if len(set(key for key, _ in children)) == len(children):
@@ -834,6 +854,28 @@ if __name__ == "__main__":
 
     assert eq_ignore_whitespace(tree.to_xml("types"), xml_string)
 
+    # parse_xml empty_tag_mode
+    xml_string = """
+      <root>
+        <foo bar="asdf" />
+      </root>
+    """
+    tree = Tree.parse_xml(xml_string, empty_tag_mode="skip")
+    assert tree["foo"] == None
+    tree = Tree.parse_xml(xml_string, empty_tag_mode="keep")
+    assert tree["foo"] == ""
+    tree = Tree.parse_xml(xml_string, empty_tag_mode="attr")
+    assert tree["foo"] == "asdf"
+
+    # parse_xml empty_tag_mode with parse_primitives
+    xml_string = """
+      <root>
+        <foo bar="1" />
+      </root>
+    """
+    tree = Tree.parse_xml(xml_string, empty_tag_mode="attr")
+    assert tree["foo"] == 1
+
     # TOML
     try:
         import toml
@@ -853,7 +895,7 @@ if __name__ == "__main__":
             number = 2
         [more.three]
             number = 3
-        
+
         list = [
             true,
             false,
@@ -897,7 +939,7 @@ if __name__ == "__main__":
                 - list1: ["a", "b"]
                 - list2: []
                 - 9
-                    
+
         """
         tree = Tree.parse_yaml(yaml_str2)
         assert eq_ignore_whitespace(
