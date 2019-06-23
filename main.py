@@ -562,6 +562,72 @@ class Tree:
         loader = yaml.SafeLoader if safe else yaml.FullLoader
         return Tree(yaml.load(string, Loader=loader))
 
+    @staticmethod
+    def parse_file(file_name, **kwargs):
+        """
+        Parses a JSON, XML, YAML, TOML, or .pkl file
+
+        Parameters
+        ----------
+        file_name : str
+            the file to load
+
+        Returns
+        -------
+        Tree
+        """
+        if file_name.endswith(".pkl", **kwargs):
+            import pickle
+            with open(file_name, "rb") as f:
+                return Tree(pickle.load(f))
+        elif file_name.endswith(".json"):
+            parser = Tree.parse_json
+        elif file_name.endswith(".yaml"):
+            parser = Tree.parse_yaml
+        elif file_name.endswith(".toml"):
+            parser = Tree.parse_toml
+        elif file_name.endswith(".xml"):
+            parser = Tree.parse_xml
+        else:
+            raise ValueError("Unrecognized file type: {}".format(file_name))
+
+        with open(file_name, "r") as f:
+            content = f.read()
+
+        return parser(content, **kwargs)
+
+    def dump(self, file_name, **kwargs):
+        """
+        Writes to a JSON, XML, YAML, TOML, or .pkl file, based on the
+        file extension in the given `file_name`.
+
+        Parameters
+        ----------
+        file_name : str
+            the file to write to
+
+        Returns
+        -------
+        Tree
+        """
+        if file_name.endswith(".pkl"):
+            import pickle
+            with open(file_name, "wb") as f:
+                pickle.dump(self.to_dict(), f, **kwargs)
+        elif file_name.endswith(".json"):
+            s = self.to_json(**kwargs)
+        elif file_name.endswith(".yaml"):
+            s = self.to_yaml(**kwargs)
+        elif file_name.endswith(".toml"):
+            s = self.to_toml(**kwargs)
+        elif file_name.endswith(".xml"):
+            s = self.to_xml(**kwargs)
+        else:
+            raise ValueError("Unrecognized file type: {}".format(file_name))
+
+        with open(file_name, "w") as f:
+            f.write(s)
+
 
 def _require_toml():
     try:
