@@ -376,7 +376,7 @@ class Tree:
                 if isinstance(value, Tree):
                     value._to_xml_helper(el, list_names)
                 else:
-                    el.text = str(value)
+                    el.text = Tree._primitive_to_xml_string(value)
         elif isinstance(self.data, list):
             if list_names is None:
                 raise RuntimeError(
@@ -402,7 +402,14 @@ class Tree:
                 if isinstance(item, Tree):
                     item._to_xml_helper(el, list_names)
                 else:
-                    el.text = str(item)
+                    el.text = Tree._primitive_to_xml_string(item)
+
+    @staticmethod
+    def _primitive_to_xml_string(value):
+        if isinstance(value, bool):
+            return "true" if value else "false"
+        else:
+            return str(value)
 
     def to_toml(self):
         """
@@ -440,7 +447,7 @@ class Tree:
         return Tree(json.loads(string))
 
     @staticmethod
-    def parse_xml(string):
+    def parse_xml(string, parse_primitives=True):
         """
         Parses XML string
 
@@ -448,19 +455,31 @@ class Tree:
         will be lost, namely all metadata, the name of the root node, and the
         name of items in lists.
 
+        Parameters
+        ----------
+        parse_primitives : bool, optional
+            if `True` (default), text values inside xml tags will be parsed
+            as ints, float, or bools, if possible
+
         Returns
         -------
         Tree
         """
         root = xml.fromstring(string)
-        return Tree._parse_xml_helper(root)
+        return Tree._parse_xml_helper(root, parse_primitives=parse_primitives)
 
     @staticmethod
-    def _parse_xml_helper(xml_element):
+    def _parse_xml_helper(xml_element, parse_primitives=True):
         children = []
         for child in xml_element:
             if len(child) == 0:
-                children.append((child.tag, child.text))
+                if child.text and len(child.text) > 0:
+                    if parse_primitives:
+                        value = Tree._parse_primitive(child.text)
+                    else:
+                        value = child.text
+
+                    children.append((child.tag, value))
             else:
                 children.append((child.tag, Tree._parse_xml_helper(child)))
 
@@ -471,6 +490,26 @@ class Tree:
             tree = Tree([val for _, val in children])
 
         return tree
+
+    @staticmethod
+    def _parse_primitive(string):
+        try:
+            return int(string)
+        except ValueError:
+            pass
+
+        try:
+            return float(string)
+        except ValueError:
+            pass
+
+        if string in ["True", "true", "TRUE"]:
+            return True
+
+        if string in ["False", "false", "FALSE"]:
+            return False
+
+        return string
 
     @staticmethod
     def parse_toml(string):
@@ -764,18 +803,36 @@ if __name__ == "__main__":
     assert eq_ignore_whitespace(tree.to_json(), json_string)
 
     # parse xml
-    tree = Tree.parse_xml(xml_str_nolist)
+    tree = Tree.parse_xml(xml_str_nolist, parse_primitives=False)
+    assert tree["one"] == "1"
     assert eq_ignore_whitespace(tree.to_xml("root"), xml_str_nolist)
 
-    tree = Tree.parse_xml(xml_str_list1)
+    tree = Tree.parse_xml(xml_str_list1, parse_primitives=False)
     assert eq_ignore_whitespace(
         tree.to_xml("root", list_names="list_item"),
         xml_str_list1)
 
-    tree = Tree.parse_xml(xml_str_list2)
+    tree = Tree.parse_xml(xml_str_list2, parse_primitives=False)
     assert eq_ignore_whitespace(
         tree.to_xml("root", list_names={"a": "a_item", "b": "b_item"}),
         xml_str_list2)
+
+    # parse_xml parse_primitives
+    xml_string = """
+      <types>
+        <int>1</int>
+        <float>1.1</float>
+        <bool>true</bool>
+        <string>foo</string>
+      </types>
+    """
+    tree = Tree.parse_xml(xml_string, parse_primitives=True)
+    assert tree["int"] == 1
+    assert tree["float"] == 1.1
+    assert tree["bool"] == True
+    assert tree["string"] == "foo"
+
+    assert eq_ignore_whitespace(tree.to_xml("types"), xml_string)
 
     # TOML
     try:
